@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build-test-analyze:
+    name: Build, test y análisis SonarCloud
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Sonar necesita todo el historial para detectar código nuevo
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Compilar (verifica tipos)
+        run: npm run build
+
+      - name: Pruebas unitarias con cobertura
+        run: npm run test:coverage
+
+      - name: Análisis con SonarCloud
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
