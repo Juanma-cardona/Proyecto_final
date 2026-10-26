@@ -19,7 +19,8 @@
   "dependencies": {
     "awilix": "^13.0.5",
     "awilix-express": "^11.0.1",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@stryker-mutator/core": "^10.0.0",
