@@ -16,13 +16,18 @@ const start = async (): Promise<void> => {
         console.log(`Server is running on port ${PORT}`);
     });
 
-    const shutdown = (): void => {
-        server.close(() => {
-            (database ? database.close() : Promise.resolve()).finally(() => process.exit(0));
-        });
+    const shutdown = async (): Promise<void> => {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        try {
+            await database?.close();
+        } catch (error) {
+            console.error("Error closing the database:", error);
+        } finally {
+            process.exit(0);
+        }
     };
-    process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
+    process.on("SIGINT", () => void shutdown());
+    process.on("SIGTERM", () => void shutdown());
 };
 
 start().catch((error: unknown) => {
