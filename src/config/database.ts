@@ -30,7 +30,8 @@ export class SqlServerDatabase implements ISqlExecutor, ITransactionManager {
     }
 
     async query<T>(sqlText: string, params: SqlParams = {}): Promise<T[]> {
-        const request = new Request(this.transactions.getStore() ?? this.pool);
+        const transaction = this.transactions.getStore();
+        const request = transaction ? new Request(transaction) : new Request(this.pool);
 
         for (const [name, value] of Object.entries(params)) {
             if (value instanceof Date) {
