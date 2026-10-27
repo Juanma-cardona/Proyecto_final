@@ -3,6 +3,7 @@ import { TransferRequestDTO, TransferResponseDTO } from "../dto/transfer.dto";
 import { Movement } from "../entities/warehouse.entities";
 import { fail } from "../exceptions/fail";
 import { AppError } from "../exceptions/errors/app.error";
+import { ITransactionManager } from "../repositories/interfaces/database.interface";
 import {
     IMovementRepository,
     IProductRepository,
@@ -16,7 +17,8 @@ export class TransferService implements ITransferService {
         private readonly productRepository: IProductRepository,
         private readonly warehouseRepository: IWarehouseRepository,
         private readonly stockRepository: IStockRepository,
-        private readonly movementRepository: IMovementRepository
+        private readonly movementRepository: IMovementRepository,
+        private readonly transactionManager: ITransactionManager
     ) {}
 
     async transfer(request: TransferRequestDTO): Promise<TransferResponseDTO> {
@@ -35,46 +37,48 @@ export class TransferService implements ITransferService {
         if (!product) fail(AppError.PRODUCT_NOT_FOUND);
         if (!product.active) fail(AppError.PRODUCT_INACTIVE);
 
-        const originBalance = await this.stockRepository.getQuantity(originWarehouseId, productId);
-        if (originBalance < quantity) fail(AppError.INSUFFICIENT_STOCK);
+        return this.transactionManager.run(async () => {
+            const originBalance = await this.stockRepository.getQuantity(originWarehouseId, productId);
+            if (originBalance < quantity) fail(AppError.INSUFFICIENT_STOCK);
 
-        const destinationBalance = await this.stockRepository.getQuantity(destinationWarehouseId, productId);
-        const newOriginBalance = originBalance - quantity;
-        const newDestinationBalance = destinationBalance + quantity;
+            const destinationBalance = await this.stockRepository.getQuantity(destinationWarehouseId, productId);
+            const newOriginBalance = originBalance - quantity;
+            const newDestinationBalance = destinationBalance + quantity;
 
-        // Nota: con una BD real, estas escrituras deben ir en UNA transacción.
-        await this.stockRepository.setQuantity(originWarehouseId, productId, newOriginBalance);
-        await this.stockRepository.setQuantity(destinationWarehouseId, productId, newDestinationBalance);
+            // Ambas escrituras (y los movimientos) van dentro de la misma transacción.
+            await this.stockRepository.setQuantity(originWarehouseId, productId, newOriginBalance);
+            await this.stockRepository.setQuantity(destinationWarehouseId, productId, newDestinationBalance);
 
-        const transferId = randomUUID();
-        const createdAt = new Date();
-        const base = { productId, quantity, reason: null, transferId, responsibleId: responsibleId, createdAt };
+            const transferId = randomUUID();
+            const createdAt = new Date();
+            const base = { productId, quantity, reason: null, transferId, responsibleId: responsibleId, createdAt };
 
-        const outMovement: Movement = {
-            ...base,
-            id: randomUUID(),
-            type: "TRANSFER_OUT",
-            warehouseId: originWarehouseId,
-            balanceAfter: newOriginBalance,
-        };
-        const inMovement: Movement = {
-            ...base,
-            id: randomUUID(),
-            type: "TRANSFER_IN",
-            warehouseId: destinationWarehouseId,
-            balanceAfter: newDestinationBalance,
-        };
-        await this.movementRepository.save(outMovement);
-        await this.movementRepository.save(inMovement);
+            const outMovement: Movement = {
+                ...base,
+                id: randomUUID(),
+                type: "TRANSFER_OUT",
+                warehouseId: originWarehouseId,
+                balanceAfter: newOriginBalance,
+            };
+            const inMovement: Movement = {
+                ...base,
+                id: randomUUID(),
+                type: "TRANSFER_IN",
+                warehouseId: destinationWarehouseId,
+                balanceAfter: newDestinationBalance,
+            };
+            await this.movementRepository.save(outMovement);
+            await this.movementRepository.save(inMovement);
 
-        return {
-            transferId,
-            productId,
-            quantity,
-            responsibleId: responsibleId,
-            origin: { warehouseId: originWarehouseId, newBalance: newOriginBalance },
-            destination: { warehouseId: destinationWarehouseId, newBalance: newDestinationBalance },
-            createdAt: createdAt.toISOString(),
-        };
+            return {
+                transferId,
+                productId,
+                quantity,
+                responsibleId: responsibleId,
+                origin: { warehouseId: originWarehouseId, newBalance: newOriginBalance },
+                destination: { warehouseId: destinationWarehouseId, newBalance: newDestinationBalance },
+                createdAt: createdAt.toISOString(),
+            };
+        });
     }
 }

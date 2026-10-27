@@ -6,6 +6,7 @@ import {
     createMovementRepositoryMock,
     createProductRepositoryMock,
     createStockRepositoryMock,
+    createTransactionManagerMock,
     createWarehouseRepositoryMock,
     expectAppError,
     makeProduct,
@@ -24,7 +25,13 @@ describe("StockService", () => {
         warehouseRepository = createWarehouseRepositoryMock();
         stockRepository = createStockRepositoryMock();
         movementRepository = createMovementRepositoryMock();
-        service = new StockService(productRepository, warehouseRepository, stockRepository, movementRepository);
+        service = new StockService(
+            productRepository,
+            warehouseRepository,
+            stockRepository,
+            movementRepository,
+            createTransactionManagerMock()
+        );
     });
 
     // ------------------------------------------------------------------

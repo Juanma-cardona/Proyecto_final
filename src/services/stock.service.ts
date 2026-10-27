@@ -8,6 +8,7 @@ import {
 import { Movement } from "../entities/warehouse.entities";
 import { fail } from "../exceptions/fail";
 import { AppError } from "../exceptions/errors/app.error";
+import { ITransactionManager } from "../repositories/interfaces/database.interface";
 import {
     IMovementRepository,
     IProductRepository,
@@ -24,7 +25,8 @@ export class StockService implements IStockService {
         private readonly productRepository: IProductRepository,
         private readonly warehouseRepository: IWarehouseRepository,
         private readonly stockRepository: IStockRepository,
-        private readonly movementRepository: IMovementRepository
+        private readonly movementRepository: IMovementRepository,
+        private readonly transactionManager: ITransactionManager
     ) {}
 
     async getStockByWarehouse(
@@ -83,37 +85,39 @@ export class StockService implements IStockService {
         if (!product) fail(AppError.PRODUCT_NOT_FOUND);
         if (!product.active) fail(AppError.PRODUCT_INACTIVE);
 
-        const previousBalance = await this.stockRepository.getQuantity(warehouseId, productId);
-        const newBalance = previousBalance + quantity;
-        if (newBalance < 0) fail(AppError.INSUFFICIENT_STOCK);
+        return this.transactionManager.run(async () => {
+            const previousBalance = await this.stockRepository.getQuantity(warehouseId, productId);
+            const newBalance = previousBalance + quantity;
+            if (newBalance < 0) fail(AppError.INSUFFICIENT_STOCK);
 
-        await this.stockRepository.setQuantity(warehouseId, productId, newBalance);
+            await this.stockRepository.setQuantity(warehouseId, productId, newBalance);
 
-        const movement: Movement = {
-            id: randomUUID(),
-            type: quantity > 0 ? "ADJUSTMENT_IN" : "ADJUSTMENT_OUT",
-            warehouseId,
-            productId,
-            quantity: Math.abs(quantity),
-            balanceAfter: newBalance,
-            reason: reason,
-            transferId: null,
-            responsibleId: responsibleId,
-            createdAt: new Date(),
-        };
-        const saved = await this.movementRepository.save(movement);
+            const movement: Movement = {
+                id: randomUUID(),
+                type: quantity > 0 ? "ADJUSTMENT_IN" : "ADJUSTMENT_OUT",
+                warehouseId,
+                productId,
+                quantity: Math.abs(quantity),
+                balanceAfter: newBalance,
+                reason: reason,
+                transferId: null,
+                responsibleId: responsibleId,
+                createdAt: new Date(),
+            };
+            const saved = await this.movementRepository.save(movement);
 
-        return {
-            movementId: saved.id,
-            warehouseId,
-            productId,
-            type: saved.type as "ADJUSTMENT_IN" | "ADJUSTMENT_OUT",
-            quantity: saved.quantity,
-            previousBalance,
-            newBalance,
-            reason: reason,
-            responsibleId: responsibleId,
-            createdAt: saved.createdAt.toISOString(),
-        };
+            return {
+                movementId: saved.id,
+                warehouseId,
+                productId,
+                type: saved.type as "ADJUSTMENT_IN" | "ADJUSTMENT_OUT",
+                quantity: saved.quantity,
+                previousBalance,
+                newBalance,
+                reason: reason,
+                responsibleId: responsibleId,
+                createdAt: saved.createdAt.toISOString(),
+            };
+        });
     }
 }
