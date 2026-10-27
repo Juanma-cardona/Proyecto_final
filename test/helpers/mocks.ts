@@ -1,6 +1,7 @@
 import { vi, expect, type Mocked } from "vitest";
 import { Movement, Product, Warehouse } from "../../src/entities/warehouse.entities";
 import { AppException } from "../../src/exceptions/app.exception";
+import { ITransactionManager } from "../../src/repositories/interfaces/database.interface";
 import {
     IMovementRepository,
     IProductRepository,
@@ -50,6 +51,12 @@ export const createMovementRepositoryMock = (): Mocked<IMovementRepository> =>
     ({
         save: vi.fn().mockImplementation(async (movement: Movement) => movement),
     }) as unknown as Mocked<IMovementRepository>;
+
+/** Transacción de mentira: solo ejecuta el trabajo (los tests de transacciones usan uno que cuenta commits). */
+export const createTransactionManagerMock = (): Mocked<ITransactionManager> =>
+    ({
+        run: vi.fn().mockImplementation(async (work: () => Promise<unknown>) => work()),
+    }) as unknown as Mocked<ITransactionManager>;
 
 // ---------- Aserción de errores de negocio ----------
 export const expectAppError = async (

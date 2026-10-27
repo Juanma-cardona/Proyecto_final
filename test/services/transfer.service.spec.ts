@@ -6,6 +6,7 @@ import {
     createMovementRepositoryMock,
     createProductRepositoryMock,
     createStockRepositoryMock,
+    createTransactionManagerMock,
     createWarehouseRepositoryMock,
     expectAppError,
     makeProduct,
@@ -38,7 +39,13 @@ describe("TransferService", () => {
         warehouseRepository = createWarehouseRepositoryMock();
         stockRepository = createStockRepositoryMock();
         movementRepository = createMovementRepositoryMock();
-        service = new TransferService(productRepository, warehouseRepository, stockRepository, movementRepository);
+        service = new TransferService(
+            productRepository,
+            warehouseRepository,
+            stockRepository,
+            movementRepository,
+            createTransactionManagerMock()
+        );
 
         productRepository.findById.mockResolvedValue(makeProduct());
         warehouseRepository.findById.mockImplementation(async (id: string) =>
