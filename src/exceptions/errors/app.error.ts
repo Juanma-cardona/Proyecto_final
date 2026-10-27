@@ -15,6 +15,9 @@ export const AppError = {
     INSUFFICIENT_STOCK: { code: "INSUFFICIENT_STOCK", statusCode: 422, message: "Insufficient stock: the operation would leave negative stock" },
     INVALID_PAGINATION: { code: "INVALID_PAGINATION", statusCode: 400, message: "page must be >= 1 and limit between 1 and 100" },
 
+    // Validación genérica (Zod): campos sin un código de error propio
+    VALIDATION_ERROR: { code: "VALIDATION_ERROR", statusCode: 400, message: "Invalid request data" },
+
     // Transferencias
     SAME_WAREHOUSE: { code: "SAME_WAREHOUSE", statusCode: 400, message: "Origin and destination warehouses must be different" },
 } as const;

@@ -20,6 +20,7 @@ export default defineConfig({
                 "src/routes/**",
                 "src/main.ts",
                 "src/server.ts",
+                "src/types/**"
             ]
         }
     }
