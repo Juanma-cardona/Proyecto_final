@@ -19,6 +19,12 @@ export interface StockItem {
     quantity: number;
 }
 
+/** Fila de stock con los datos del producto (sale de un JOIN: evita consultar producto por producto). */
+export interface StockListItem extends StockItem {
+    productCode: string;
+    productName: string;
+}
+
 export type MovementType =
     | "ADJUSTMENT_IN"
     | "ADJUSTMENT_OUT"

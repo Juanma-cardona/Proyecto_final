@@ -5,13 +5,10 @@ import {
     StockItemResponseDTO,
     WarehouseStockResponseDTO,
 } from "../dto/stock.dto";
-import { Movement } from "../entities/warehouse.entities";
 import { fail } from "../exceptions/fail";
 import { AppError } from "../exceptions/errors/app.error";
-import { ITransactionManager } from "../repositories/interfaces/database.interface";
 import {
-    IMovementRepository,
-    IProductRepository,
+    IStockMutationPersistence,
     IStockRepository,
     IWarehouseRepository,
 } from "../repositories/interfaces/repositories.interface";
@@ -22,11 +19,9 @@ const MAX_LIMIT = 100;
 
 export class StockService implements IStockService {
     constructor(
-        private readonly productRepository: IProductRepository,
         private readonly warehouseRepository: IWarehouseRepository,
         private readonly stockRepository: IStockRepository,
-        private readonly movementRepository: IMovementRepository,
-        private readonly transactionManager: ITransactionManager
+        private readonly stockMutationPersistence: IStockMutationPersistence
     ) {}
 
     async getStockByWarehouse(
@@ -47,16 +42,13 @@ export class StockService implements IStockService {
             limit
         );
 
-        const data: StockItemResponseDTO[] = [];
-        for (const item of items) {
-            const product = await this.productRepository.findById(item.productId);
-            data.push({
-                productId: item.productId,
-                productCode: product?.code ?? "UNKNOWN",
-                productName: product?.name ?? "UNKNOWN",
-                quantity: item.quantity,
-            });
-        }
+        // El repositorio ya trae código y nombre del producto (JOIN): no hay consultas por producto.
+        const data: StockItemResponseDTO[] = items.map((item) => ({
+            productId: item.productId,
+            productCode: item.productCode,
+            productName: item.productName,
+            quantity: item.quantity,
+        }));
 
         return {
             warehouseId,
@@ -81,43 +73,29 @@ export class StockService implements IStockService {
         const warehouse = await this.warehouseRepository.findById(warehouseId);
         if (!warehouse) fail(AppError.WAREHOUSE_NOT_FOUND);
 
-        const product = await this.productRepository.findById(productId);
-        if (!product) fail(AppError.PRODUCT_NOT_FOUND);
-        if (!product.active) fail(AppError.PRODUCT_INACTIVE);
-
-        return this.transactionManager.run(async () => {
-            const previousBalance = await this.stockRepository.getQuantity(warehouseId, productId);
-            const newBalance = previousBalance + quantity;
-            if (newBalance < 0) fail(AppError.INSUFFICIENT_STOCK);
-
-            await this.stockRepository.setQuantity(warehouseId, productId, newBalance);
-
-            const movement: Movement = {
-                id: randomUUID(),
-                type: quantity > 0 ? "ADJUSTMENT_IN" : "ADJUSTMENT_OUT",
-                warehouseId,
-                productId,
-                quantity: Math.abs(quantity),
-                balanceAfter: newBalance,
-                reason: reason,
-                transferId: null,
-                responsibleId: responsibleId,
-                createdAt: new Date(),
-            };
-            const saved = await this.movementRepository.save(movement);
-
-            return {
-                movementId: saved.id,
-                warehouseId,
-                productId,
-                type: saved.type as "ADJUSTMENT_IN" | "ADJUSTMENT_OUT",
-                quantity: saved.quantity,
-                previousBalance,
-                newBalance,
-                reason: reason,
-                responsibleId: responsibleId,
-                createdAt: saved.createdAt.toISOString(),
-            };
+        const movementId = randomUUID();
+        const createdAt = new Date();
+        const { previousBalance, newBalance } = await this.stockMutationPersistence.adjustStock({
+            warehouseId,
+            productId,
+            quantity,
+            reason,
+            responsibleId,
+            movementId,
+            createdAt,
         });
+
+        return {
+            movementId,
+            warehouseId,
+            productId,
+            type: quantity > 0 ? "ADJUSTMENT_IN" : "ADJUSTMENT_OUT",
+            quantity: Math.abs(quantity),
+            previousBalance,
+            newBalance,
+            reason,
+            responsibleId,
+            createdAt: createdAt.toISOString(),
+        };
     }
 }

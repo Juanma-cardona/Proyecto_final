@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { AppError } from "../../src/exceptions/errors/app.error";
+import { AppException } from "../../src/exceptions/app.exception";
 import { ProductService } from "../../src/services/product.service";
 import { createProductRepositoryMock, expectAppError, makeProduct } from "../helpers/mocks";
 
@@ -34,7 +35,7 @@ describe("ProductService", () => {
 
             expect(result.code).toBe("TOR-001");
             expect(result.name).toBe("Tornillo");
-            expect(productRepository.findByCode).toHaveBeenCalledWith("TOR-001");
+            expect(productRepository.findByCode).not.toHaveBeenCalled();
         });
 
         it("should store description as null when it is missing", async () => {
@@ -81,41 +82,39 @@ describe("ProductService", () => {
         });
 
         it("should throw PRODUCT_CODE_DUPLICATED (409) when the code already exists", async () => {
-            productRepository.findByCode.mockResolvedValue(makeProduct());
+            productRepository.save.mockRejectedValue(
+                new AppException(AppError.PRODUCT_CODE_DUPLICATED.code, AppError.PRODUCT_CODE_DUPLICATED.statusCode, AppError.PRODUCT_CODE_DUPLICATED.message)
+            );
 
             await expectAppError(
                 service.createProduct({ code: "tor-001", name: "Otro" }),
                 AppError.PRODUCT_CODE_DUPLICATED
             );
-            expect(productRepository.save).not.toHaveBeenCalled();
+            expect(productRepository.save).toHaveBeenCalledTimes(1);
         });
     });
 
     describe("setProductStatus", () => {
         it("should deactivate an active product", async () => {
-            productRepository.findById.mockResolvedValue(makeProduct({ active: true }));
+            productRepository.updateStatus.mockResolvedValue(makeProduct({ active: false }));
 
             const result = await service.setProductStatus("prod-1", false);
 
             expect(result.active).toBe(false);
-            expect(productRepository.save).toHaveBeenCalledWith(
-                expect.objectContaining({ id: "prod-1", active: false })
-            );
+            expect(productRepository.updateStatus).toHaveBeenCalledWith("prod-1", false);
         });
 
         it("should activate an inactive product", async () => {
-            productRepository.findById.mockResolvedValue(makeProduct({ active: false }));
+            productRepository.updateStatus.mockResolvedValue(makeProduct({ active: true }));
 
             const result = await service.setProductStatus("prod-1", true);
 
             expect(result.active).toBe(true);
-            expect(productRepository.save).toHaveBeenCalledWith(
-                expect.objectContaining({ id: "prod-1", active: true })
-            );
+            expect(productRepository.updateStatus).toHaveBeenCalledWith("prod-1", true);
         });
 
         it("should keep the rest of the product data untouched", async () => {
-            productRepository.findById.mockResolvedValue(makeProduct({ description: "Caja x100" }));
+            productRepository.updateStatus.mockResolvedValue(makeProduct({ description: "Caja x100", active: false }));
 
             const result = await service.setProductStatus("prod-1", false);
 
@@ -135,14 +134,14 @@ describe("ProductService", () => {
             ["undefined", undefined],
         ])("should throw INVALID_STATUS when active is %s", async (_label, active) => {
             await expectAppError(service.setProductStatus("prod-1", active), AppError.INVALID_STATUS);
-            expect(productRepository.findById).not.toHaveBeenCalled();
+            expect(productRepository.updateStatus).not.toHaveBeenCalled();
         });
 
         it("should throw PRODUCT_NOT_FOUND (404) when the product does not exist", async () => {
-            productRepository.findById.mockResolvedValue(null);
+            productRepository.updateStatus.mockResolvedValue(null);
 
             await expectAppError(service.setProductStatus("nope", true), AppError.PRODUCT_NOT_FOUND);
-            expect(productRepository.save).not.toHaveBeenCalled();
+            expect(productRepository.updateStatus).toHaveBeenCalledWith("nope", true);
         });
     });
 });
