@@ -1,182 +1,44 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { ITransactionManager } from "../../src/repositories/interfaces/database.interface";
-import { AppError } from "../../src/exceptions/errors/app.error";
-import { StockService } from "../../src/services/stock.service";
-import { TransferService } from "../../src/services/transfer.service";
-import {
-    createMovementRepositoryMock,
-    createProductRepositoryMock,
-    createStockRepositoryMock,
-    createWarehouseRepositoryMock,
-    expectAppError,
-    makeProduct,
-    makeWarehouse,
-} from "../helpers/mocks";
+import { describe, expect, it, vi } from "vitest";
+import { ISqlExecutor } from "../../src/repositories/interfaces/database.interface";
+import { SqlServerStockMutationPersistence } from "../../src/repositories/sqlserver/stock-mutation.persistence";
+import { createStockRepositoryMock } from "../helpers/mocks";
 
-/** Gestor de transacciones que cuenta commits y rollbacks y sabe si hay una transacción abierta. */
-const createRecordingTransactionManager = () => {
-    const state = { open: false, commits: 0, rollbacks: 0, runs: 0 };
-    const manager: ITransactionManager = {
-        run: async (work) => {
-            state.runs++;
-            state.open = true;
-            try {
-                const result = await work();
-                state.commits++;
-                return result;
-            } catch (error) {
-                state.rollbacks++;
-                throw error;
-            } finally {
-                state.open = false;
-            }
-        },
-    };
-    return { manager, state };
-};
+const createExecutor = (): ISqlExecutor => ({
+    query: vi.fn().mockImplementation(async (sql: string) => {
+        if (sql.includes("@previousBalance AS previousBalance")) return [{ previousBalance: 20, newBalance: 25 }];
+        return [{ originBalance: 15, destinationBalance: 5 }];
+    }),
+});
 
-describe("Atomicity of the stock operations", () => {
-    let productRepository: ReturnType<typeof createProductRepositoryMock>;
-    let warehouseRepository: ReturnType<typeof createWarehouseRepositoryMock>;
-    let stockRepository: ReturnType<typeof createStockRepositoryMock>;
-    let movementRepository: ReturnType<typeof createMovementRepositoryMock>;
-    let recorder: ReturnType<typeof createRecordingTransactionManager>;
-    let openWhenWriting: boolean[];
+describe("Stock mutation transaction batches", () => {
+    it("keeps an adjustment read, update and movement insert in one SQL transaction and request", async () => {
+        const executor = createExecutor();
+        const persistence = new SqlServerStockMutationPersistence(executor, createStockRepositoryMock());
 
-    beforeEach(() => {
-        productRepository = createProductRepositoryMock();
-        warehouseRepository = createWarehouseRepositoryMock();
-        stockRepository = createStockRepositoryMock();
-        movementRepository = createMovementRepositoryMock();
-        recorder = createRecordingTransactionManager();
-        openWhenWriting = [];
-
-        productRepository.findById.mockResolvedValue(makeProduct());
-        warehouseRepository.findById.mockImplementation(async (id: string) => makeWarehouse({ id }));
-        stockRepository.getQuantity.mockImplementation(async () => {
-            openWhenWriting.push(recorder.state.open);
-            return 50;
+        await persistence.adjustStock({
+            warehouseId: "BOG", productId: "p-1", quantity: 5, reason: "Count", responsibleId: "u-1",
+            movementId: "m-1", createdAt: new Date("2026-01-01T00:00:00Z"),
         });
-        stockRepository.setQuantity.mockImplementation(async () => {
-            openWhenWriting.push(recorder.state.open);
-        });
-        movementRepository.save.mockImplementation(async (movement) => {
-            openWhenWriting.push(recorder.state.open);
-            return movement;
-        });
+
+        expect(executor.query).toHaveBeenCalledTimes(1);
+        const sql = vi.mocked(executor.query).mock.calls[0]?.[0] as string;
+        expect(sql).toMatch(/BEGIN TRANSACTION[\s\S]*UPDLOCK, HOLDLOCK[\s\S]*MERGE dbo\.stock[\s\S]*INSERT INTO dbo\.movements[\s\S]*COMMIT TRANSACTION/);
+        expect(sql).toMatch(/BEGIN CATCH[\s\S]*ROLLBACK TRANSACTION/);
     });
 
-    describe("TransferService", () => {
-        let service: TransferService;
-        const request = {
-            originWarehouseId: "BOG",
-            destinationWarehouseId: "MED",
-            productId: "prod-1",
-            quantity: 20,
-            responsibleId: "user-1",
-        };
+    it("keeps a transfer balance lock, update and both movements in one SQL transaction and request", async () => {
+        const executor = createExecutor();
+        const persistence = new SqlServerStockMutationPersistence(executor, createStockRepositoryMock());
 
-        beforeEach(() => {
-            service = new TransferService(
-                productRepository,
-                warehouseRepository,
-                stockRepository,
-                movementRepository,
-                recorder.manager
-            );
+        await persistence.transfer({
+            productId: "p-1", originWarehouseId: "BOG", destinationWarehouseId: "MED", quantity: 5,
+            responsibleId: "u-1", transferId: "t-1", outMovementId: "m-1", inMovementId: "m-2",
+            createdAt: new Date("2026-01-01T00:00:00Z"),
         });
 
-        it("should read, write and register the movements inside one transaction that is committed", async () => {
-            await service.transfer(request);
-
-            expect(recorder.state).toMatchObject({ runs: 1, commits: 1, rollbacks: 0 });
-            // 2 lecturas + 2 escrituras de stock + 2 movimientos
-            expect(openWhenWriting).toEqual([true, true, true, true, true, true]);
-        });
-
-        it("should roll the transaction back when the origin does not have enough stock", async () => {
-            stockRepository.getQuantity.mockResolvedValue(5);
-
-            await expectAppError(service.transfer(request), AppError.INSUFFICIENT_STOCK);
-
-            expect(recorder.state).toMatchObject({ runs: 1, commits: 0, rollbacks: 1 });
-            expect(stockRepository.setQuantity).not.toHaveBeenCalled();
-        });
-
-        it("should roll the transaction back when saving a movement fails", async () => {
-            movementRepository.save.mockRejectedValueOnce(new Error("db down"));
-
-            await expect(service.transfer(request)).rejects.toThrow("db down");
-
-            expect(recorder.state).toMatchObject({ commits: 0, rollbacks: 1 });
-        });
-
-        it("should not open a transaction when the request is invalid", async () => {
-            await expectAppError(service.transfer({ ...request, quantity: 0 }), AppError.INVALID_QUANTITY);
-            await expectAppError(
-                service.transfer({ ...request, destinationWarehouseId: "BOG" }),
-                AppError.SAME_WAREHOUSE
-            );
-
-            expect(recorder.state.runs).toBe(0);
-        });
-
-        it("should not open a transaction when the product does not exist", async () => {
-            productRepository.findById.mockResolvedValue(null);
-
-            await expectAppError(service.transfer(request), AppError.PRODUCT_NOT_FOUND);
-
-            expect(recorder.state.runs).toBe(0);
-        });
-    });
-
-    describe("StockService.adjustStock", () => {
-        let service: StockService;
-        const request = {
-            warehouseId: "BOG",
-            productId: "prod-1",
-            quantity: 10,
-            reason: "Conteo físico",
-            responsibleId: "user-1",
-        };
-
-        beforeEach(() => {
-            service = new StockService(
-                productRepository,
-                warehouseRepository,
-                stockRepository,
-                movementRepository,
-                recorder.manager
-            );
-        });
-
-        it("should read, write and register the movement inside one transaction that is committed", async () => {
-            await service.adjustStock(request);
-
-            expect(recorder.state).toMatchObject({ runs: 1, commits: 1, rollbacks: 0 });
-            // 1 lectura + 1 escritura de stock + 1 movimiento
-            expect(openWhenWriting).toEqual([true, true, true]);
-        });
-
-        it("should roll the transaction back when the adjustment would leave negative stock", async () => {
-            await expectAppError(service.adjustStock({ ...request, quantity: -51 }), AppError.INSUFFICIENT_STOCK);
-
-            expect(recorder.state).toMatchObject({ runs: 1, commits: 0, rollbacks: 1 });
-            expect(stockRepository.setQuantity).not.toHaveBeenCalled();
-        });
-
-        it("should roll the transaction back when saving the movement fails", async () => {
-            movementRepository.save.mockRejectedValueOnce(new Error("db down"));
-
-            await expect(service.adjustStock(request)).rejects.toThrow("db down");
-
-            expect(recorder.state).toMatchObject({ commits: 0, rollbacks: 1 });
-        });
-
-        it("should not open a transaction when the request is invalid", async () => {
-            await expectAppError(service.adjustStock({ ...request, quantity: 0 }), AppError.INVALID_QUANTITY);
-
-            expect(recorder.state.runs).toBe(0);
-        });
+        expect(executor.query).toHaveBeenCalledTimes(1);
+        const sql = vi.mocked(executor.query).mock.calls[0]?.[0] as string;
+        expect(sql).toMatch(/BEGIN TRANSACTION[\s\S]*UPDLOCK, HOLDLOCK[\s\S]*MERGE dbo\.stock[\s\S]*INSERT INTO dbo\.movements[\s\S]*COMMIT TRANSACTION/);
+        expect(sql).toMatch(/BEGIN CATCH[\s\S]*ROLLBACK TRANSACTION/);
     });
 });

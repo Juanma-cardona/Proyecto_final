@@ -25,9 +25,6 @@ export class ProductService implements IProductService {
         if (!code) fail(AppError.PRODUCT_CODE_REQUIRED);
         if (!name) fail(AppError.PRODUCT_NAME_REQUIRED);
 
-        const existing = await this.productRepository.findByCode(code);
-        if (existing) fail(AppError.PRODUCT_CODE_DUPLICATED);
-
         const product: Product = {
             id: randomUUID(),
             code,
@@ -43,10 +40,8 @@ export class ProductService implements IProductService {
     async setProductStatus(productId: string, active: unknown): Promise<ProductResponseDTO> {
         if (typeof active !== "boolean") fail(AppError.INVALID_STATUS);
 
-        const product = await this.productRepository.findById(productId);
-        if (!product) fail(AppError.PRODUCT_NOT_FOUND);
-
-        const updated = await this.productRepository.save({ ...product, active: active });
+        const updated = await this.productRepository.updateStatus(productId, active);
+        if (!updated) fail(AppError.PRODUCT_NOT_FOUND);
         return toResponse(updated);
     }
 }

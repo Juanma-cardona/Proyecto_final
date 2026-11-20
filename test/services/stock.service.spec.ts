@@ -6,7 +6,7 @@ import {
     createMovementRepositoryMock,
     createProductRepositoryMock,
     createStockRepositoryMock,
-    createTransactionManagerMock,
+    createStockMutationPersistenceMock,
     createWarehouseRepositoryMock,
     expectAppError,
     makeProduct,
@@ -18,6 +18,7 @@ describe("StockService", () => {
     let warehouseRepository: ReturnType<typeof createWarehouseRepositoryMock>;
     let stockRepository: ReturnType<typeof createStockRepositoryMock>;
     let movementRepository: ReturnType<typeof createMovementRepositoryMock>;
+    let stockMutationPersistence: ReturnType<typeof createStockMutationPersistenceMock>;
     let service: StockService;
 
     beforeEach(() => {
@@ -25,12 +26,11 @@ describe("StockService", () => {
         warehouseRepository = createWarehouseRepositoryMock();
         stockRepository = createStockRepositoryMock();
         movementRepository = createMovementRepositoryMock();
+        stockMutationPersistence = createStockMutationPersistenceMock(productRepository, stockRepository, movementRepository);
         service = new StockService(
-            productRepository,
             warehouseRepository,
             stockRepository,
-            movementRepository,
-            createTransactionManagerMock()
+            stockMutationPersistence
         );
     });
 
@@ -42,10 +42,17 @@ describe("StockService", () => {
 
         it("should return the stock of the warehouse with product info", async () => {
             stockRepository.listByWarehouse.mockResolvedValue({
-                items: [{ warehouseId: "BOG", productId: "prod-1", quantity: 30 }],
+                items: [
+                    {
+                        warehouseId: "BOG",
+                        productId: "prod-1",
+                        productCode: "TOR-001",
+                        productName: "Tornillo 1/4",
+                        quantity: 30,
+                    },
+                ],
                 total: 1,
             });
-            productRepository.findById.mockResolvedValue(makeProduct());
 
             const result = await service.getStockByWarehouse("BOG", 1, 10);
 
@@ -82,16 +89,41 @@ describe("StockService", () => {
             expect(result.totalPages).toBe(0);
         });
 
-        it("should mark the product as UNKNOWN if it can not be found", async () => {
+        it("should not query the products one by one (the repository already brings them)", async () => {
             stockRepository.listByWarehouse.mockResolvedValue({
-                items: [{ warehouseId: "BOG", productId: "ghost", quantity: 2 }],
-                total: 1,
+                items: Array.from({ length: 10 }, (_, i) => ({
+                    warehouseId: "BOG",
+                    productId: `prod-${i}`,
+                    productCode: `COD-${i}`,
+                    productName: `Producto ${i}`,
+                    quantity: i,
+                })),
+                total: 10,
             });
-            productRepository.findById.mockResolvedValue(null);
 
             const result = await service.getStockByWarehouse("BOG", 1, 10);
 
-            expect(result.data[0]).toMatchObject({ productCode: "UNKNOWN", productName: "UNKNOWN", quantity: 2 });
+            expect(result.data).toHaveLength(10);
+            expect(stockRepository.listByWarehouse).toHaveBeenCalledTimes(1);
+            expect(productRepository.findById).not.toHaveBeenCalled();
+            expect(productRepository.findByIds).not.toHaveBeenCalled();
+        });
+
+        it("should keep the order of the stock items and map each one with its own product data", async () => {
+            stockRepository.listByWarehouse.mockResolvedValue({
+                items: [
+                    { warehouseId: "BOG", productId: "prod-2", productCode: "B-2", productName: "Segundo", quantity: 20 },
+                    { warehouseId: "BOG", productId: "prod-1", productCode: "A-1", productName: "Primero", quantity: 10 },
+                ],
+                total: 2,
+            });
+
+            const result = await service.getStockByWarehouse("BOG", 1, 10);
+
+            expect(result.data).toEqual([
+                { productId: "prod-2", productCode: "B-2", productName: "Segundo", quantity: 20 },
+                { productId: "prod-1", productCode: "A-1", productName: "Primero", quantity: 10 },
+            ]);
         });
 
         it("should accept the maximum limit (100) and the first page", async () => {

@@ -1,15 +1,19 @@
-import { aliasTo, asClass, asValue, createContainer, InjectionMode } from "awilix";
+import { aliasTo, asClass, asFunction, asValue, createContainer, InjectionMode } from "awilix";
 import { ProductController } from "../controllers/product.controller";
 import { StockController } from "../controllers/stock.controller";
 import { TransferController } from "../controllers/transfer.controller";
+import { CachedWarehouseRepository } from "../repositories/cache/cached-warehouse.repository";
+import { ISqlExecutor } from "../repositories/interfaces/database.interface";
 import { InMemoryMovementRepository } from "../repositories/in-memory/movement.repository";
 import { InMemoryProductRepository } from "../repositories/in-memory/product.repository";
 import { InMemoryStockRepository } from "../repositories/in-memory/stock.repository";
+import { InMemoryStockMutationPersistence } from "../repositories/in-memory/stock-mutation.persistence";
 import { InMemoryTransactionManager } from "../repositories/in-memory/transaction.manager";
 import { InMemoryWarehouseRepository } from "../repositories/in-memory/warehouse.repository";
 import { SqlServerMovementRepository } from "../repositories/sqlserver/movement.repository";
 import { SqlServerProductRepository } from "../repositories/sqlserver/product.repository";
 import { SqlServerStockRepository } from "../repositories/sqlserver/stock.repository";
+import { SqlServerStockMutationPersistence } from "../repositories/sqlserver/stock-mutation.persistence";
 import { SqlServerWarehouseRepository } from "../repositories/sqlserver/warehouse.repository";
 import { ProductService } from "../services/product.service";
 import { StockService } from "../services/stock.service";
@@ -35,8 +39,13 @@ if (database) {
         transactionManager: aliasTo("database"),
 
         productRepository: asClass(SqlServerProductRepository).singleton(),
-        warehouseRepository: asClass(SqlServerWarehouseRepository).singleton(),
+        // Las bodegas casi no cambian: se guardan en memoria para no consultarlas en cada petición.
+        // (El parámetro debe llamarse igual que la llave del contenedor: modo CLASSIC.)
+        warehouseRepository: asFunction(
+            (sqlExecutor: ISqlExecutor) => new CachedWarehouseRepository(new SqlServerWarehouseRepository(sqlExecutor))
+        ).singleton(),
         stockRepository: asClass(SqlServerStockRepository).singleton(),
+        stockMutationPersistence: asClass(SqlServerStockMutationPersistence).singleton(),
         movementRepository: asClass(SqlServerMovementRepository).singleton(),
     });
 } else {
@@ -48,6 +57,7 @@ if (database) {
         warehouseRepository: asClass(InMemoryWarehouseRepository).singleton(),
         stockRepository: asClass(InMemoryStockRepository).singleton(),
         movementRepository: asClass(InMemoryMovementRepository).singleton(),
+        stockMutationPersistence: asClass(InMemoryStockMutationPersistence).singleton(),
     });
 }
 

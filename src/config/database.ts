@@ -16,13 +16,38 @@ import {
 export class SqlServerDatabase implements ISqlExecutor, ITransactionManager {
     private readonly pool: ConnectionPool;
     private readonly transactions = new AsyncLocalStorage<Transaction>();
+    private readonly warmUpConnections: number;
 
     constructor(config: SqlConfig) {
         this.pool = new ConnectionPool(config);
+        this.pool.on("error", (error: unknown) => {
+            console.error("SQL Server connection pool error:", error);
+        });
+        this.warmUpConnections = Math.min(config.pool?.min ?? 0, config.pool?.max ?? 10);
     }
 
     async connect(): Promise<void> {
         await this.pool.connect();
+        await this.warmUp();
+    }
+
+    /**
+     * Abre `pool.min` conexiones antes de recibir tráfico, de 10 en 10 para no saturar el inicio de sesión
+     * de SQL Server. Cada consulta espera 200 ms para que se necesiten conexiones distintas a la vez.
+     * Si falla, la API arranca igual: las conexiones se abrirán a demanda.
+     */
+    private async warmUp(): Promise<void> {
+        const BATCH_SIZE = 10;
+        try {
+            for (let opened = 0; opened < this.warmUpConnections; opened += BATCH_SIZE) {
+                const size = Math.min(BATCH_SIZE, this.warmUpConnections - opened);
+                await Promise.all(
+                    Array.from({ length: size }, () => new Request(this.pool).query("WAITFOR DELAY '00:00:00.200'"))
+                );
+            }
+        } catch (error) {
+            console.warn("Could not warm up the connection pool:", error);
+        }
     }
 
     async close(): Promise<void> {
