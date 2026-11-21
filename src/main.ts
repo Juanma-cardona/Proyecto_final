@@ -1,13 +1,13 @@
 import "./config/env";
-import { database } from "./config/container";
-import app from "./server";
+import { database, databaseDriver } from "./config/container";
+import app, { connectDatabase } from "./server";
 
 const PORT = Number(process.env.PORT ?? 3000);
 
 const start = async (): Promise<void> => {
     if (database) {
-        await database.connect();
-        console.log("Connected to SQL Server");
+        await connectDatabase();
+        console.log(`Connected to ${databaseDriver}`);
     } else {
         console.log("Using in-memory storage (data is lost when the server restarts)");
     }

@@ -15,24 +15,37 @@ import { SqlServerProductRepository } from "../repositories/sqlserver/product.re
 import { SqlServerStockRepository } from "../repositories/sqlserver/stock.repository";
 import { SqlServerStockMutationPersistence } from "../repositories/sqlserver/stock-mutation.persistence";
 import { SqlServerWarehouseRepository } from "../repositories/sqlserver/warehouse.repository";
+import { PostgresMovementRepository } from "../repositories/postgres/movement.repository";
+import { PostgresProductRepository } from "../repositories/postgres/product.repository";
+import { PostgresStockRepository } from "../repositories/postgres/stock.repository";
+import { PostgresStockMutationPersistence } from "../repositories/postgres/stock-mutation.persistence";
+import { PostgresWarehouseRepository } from "../repositories/postgres/warehouse.repository";
 import { ProductService } from "../services/product.service";
 import { StockService } from "../services/stock.service";
 import { TransferService } from "../services/transfer.service";
 import { SqlServerDatabase } from "./database";
+import { PostgresDatabase } from "./postgres.database";
 import { loadSqlServerConfig } from "./sqlserver.config";
 
-/** DB_DRIVER=sqlserver usa SQL Server; cualquier otro valor (o ninguno) usa datos en memoria. */
-const useSqlServer = (process.env.DB_DRIVER ?? "memory").toLowerCase() === "sqlserver";
+/** DB_DRIVER selecciona SQL Server, PostgreSQL (Supabase) o almacenamiento en memoria. */
+export const databaseDriver = (process.env.DB_DRIVER ?? "memory").toLowerCase();
+const useSqlServer = databaseDriver === "sqlserver";
+const usePostgres = databaseDriver === "postgres";
 
 /** Conexión a SQL Server, o null cuando se usa memoria. main.ts la conecta y la cierra. */
-export const database = useSqlServer ? new SqlServerDatabase(loadSqlServerConfig()) : null;
+export const database = useSqlServer
+    ? new SqlServerDatabase(loadSqlServerConfig())
+    : usePostgres
+      ? new PostgresDatabase(process.env.DATABASE_URL)
+      : null;
 
 export const container = createContainer({
     injectionMode: InjectionMode.CLASSIC,
 });
 
 // Los nombres de los parámetros de cada constructor deben coincidir con estas llaves (modo CLASSIC).
-if (database) {
+if (useSqlServer) {
+    if (!database) throw new Error("SQL Server database was not initialized");
     container.register({
         database: asValue(database),
         sqlExecutor: aliasTo("database"),
@@ -47,6 +60,21 @@ if (database) {
         stockRepository: asClass(SqlServerStockRepository).singleton(),
         stockMutationPersistence: asClass(SqlServerStockMutationPersistence).singleton(),
         movementRepository: asClass(SqlServerMovementRepository).singleton(),
+    });
+} else if (usePostgres) {
+    if (!database) throw new Error("PostgreSQL database was not initialized");
+    container.register({
+        database: asValue(database),
+        sqlExecutor: aliasTo("database"),
+        transactionManager: aliasTo("database"),
+
+        productRepository: asClass(PostgresProductRepository).singleton(),
+        warehouseRepository: asFunction(
+            (sqlExecutor: ISqlExecutor) => new CachedWarehouseRepository(new PostgresWarehouseRepository(sqlExecutor))
+        ).singleton(),
+        stockRepository: asClass(PostgresStockRepository).singleton(),
+        movementRepository: asClass(PostgresMovementRepository).singleton(),
+        stockMutationPersistence: asClass(PostgresStockMutationPersistence).singleton(),
     });
 } else {
     container.register({
