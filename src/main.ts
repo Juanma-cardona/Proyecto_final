@@ -1,6 +1,6 @@
 import "./config/env";
 import { database } from "./config/container";
-import { createServer } from "./server";
+import app from "./server";
 
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -12,7 +12,7 @@ const start = async (): Promise<void> => {
         console.log("Using in-memory storage (data is lost when the server restarts)");
     }
 
-    const server = createServer().listen(PORT, () => {
+    const server = app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}`);
     });
 

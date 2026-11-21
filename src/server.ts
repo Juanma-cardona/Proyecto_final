@@ -14,3 +14,8 @@ export const createServer = () => {
 
     return app;
 };
+
+// Vercel's Express runtime discovers this file and serves the default-exported app.
+const app = createServer();
+
+export default app;
