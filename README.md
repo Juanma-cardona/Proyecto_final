@@ -2,7 +2,7 @@
 
 API REST para controlar el inventario de una distribuidora con **tres bodegas físicas** (propuesta 2 del curso de Pruebas de Software). Permite crear productos, consultar el stock por bodega, hacer ajustes manuales con justificación y transferir mercancía entre bodegas, garantizando que **el stock nunca quede negativo** y dejando registro de cada movimiento.
 
-> **Alcance de esta entrega:** 5 endpoints + pruebas unitarias con Vitest. Los datos se guardan **en memoria** (se pierden al reiniciar el servidor).
+> **Alcance de esta entrega:** 5 endpoints + pruebas unitarias con Vitest. El backend puede usar almacenamiento en memoria, SQL Server o PostgreSQL/Supabase según `DB_DRIVER`.
 
 ---
 
