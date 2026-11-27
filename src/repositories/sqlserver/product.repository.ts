@@ -3,29 +3,12 @@ import { AppError } from "../../exceptions/errors/app.error";
 import { fail } from "../../exceptions/fail";
 import { ISqlExecutor } from "../interfaces/database.interface";
 import { IProductRepository } from "../interfaces/repositories.interface";
-
-interface ProductRow {
-    id: string;
-    code: string;
-    name: string;
-    description: string | null;
-    active: boolean;
-    created_at: Date;
-}
+import { findProductsByIds, ProductRow, toProduct } from "../shared/product.mapping";
 
 // Números de error de SQL Server para "llave duplicada" (índice único / restricción UNIQUE).
 const UNIQUE_VIOLATION_NUMBERS = [2601, 2627];
 
 const SELECT_PRODUCT = "SELECT id, code, name, description, active, created_at FROM dbo.products";
-
-const toProduct = (row: ProductRow): Product => ({
-    id: row.id,
-    code: row.code,
-    name: row.name,
-    description: row.description,
-    active: row.active,
-    createdAt: row.created_at,
-});
 
 export class SqlServerProductRepository implements IProductRepository {
     constructor(private readonly sqlExecutor: ISqlExecutor) {}
@@ -80,24 +63,7 @@ export class SqlServerProductRepository implements IProductRepository {
     }
 
     async findByIds(ids: string[]): Promise<Product[]> {
-        const uniqueIds = [...new Set(ids)];
-        if (uniqueIds.length === 0) {
-            return [];
-        }
-
-        // Una sola consulta con IN (@id0, @id1, ...). SQL Server admite hasta 2100 parámetros por consulta
-        // y una página de stock trae como máximo 100 productos.
-        const params: Record<string, string> = {};
-        const placeholders = uniqueIds.map((id, index) => {
-            params[`id${index}`] = id;
-            return `@id${index}`;
-        });
-
-        const rows = await this.sqlExecutor.query<ProductRow>(
-            `${SELECT_PRODUCT} WHERE id IN (${placeholders.join(", ")})`,
-            params
-        );
-        return rows.map(toProduct);
+        return findProductsByIds(this.sqlExecutor, "dbo.products", ids);
     }
 
     async findByCode(code: string): Promise<Product | null> {
