@@ -7,25 +7,28 @@
 
 | Recurso | Enlace / estado |
 |---|---|
-| Repositorio GitHub | [Juanma-cardona/Proyecto_final](https://github.com/Juanma-cardona/Proyecto_final) |
+| Repositorio GitHub | [Juanma-cardona/Proyecto_final](https://github.com/Juanma-cardona/Proyecto_final)[Proyecto_final_performance](https://github.com/Juanma-cardona/Proyecto_final_performance.git) |
 | Aplicación web | [Abrir BodegasApp](https://proyecto-final-two-beige.vercel.app/) |
 | Análisis SonarCloud | [Resumen del proyecto](https://sonarcloud.io/summary/overall?id=Juanma-cardona_Proyecto_final) |
 | Pipeline CI | [GitHub Actions](https://github.com/Juanma-cardona/Proyecto_final/actions/workflows/ci.yml) |
 
 ## Estado actual de SonarCloud
 
-La captura más reciente muestra **2 condiciones fallidas en New Code**. La imagen resume esas métricas; el [panel de SonarCloud](https://sonarcloud.io/summary/overall?id=Juanma-cardona_Proyecto_final) refleja el análisis publicado más reciente.
+El **Quality Gate está aprobado** en la vista de código global (*Overall Code*). La captura corresponde al análisis compartido; el [panel de SonarCloud](https://sonarcloud.io/summary/overall?id=Juanma-cardona_Proyecto_final) muestra el estado más reciente.
 
-| Métrica | Resultado de la captura |
+![Resumen de calidad SonarCloud: Quality Gate Passed](image.png)
+
+| Métrica | Resultado |
 |---|---:|
-| Condición | Resultado | Requisito |
-|---|---:|---:|
-| Cobertura de código nuevo | 55.77% (368 líneas) | ≥ 80.0% |
-| Líneas duplicadas nuevas | 8.96% (3k líneas) | ≤ 3.0% |
-| Issues nuevos / aceptados | 0 / 0 | — |
-| Security hotspots | 0 | — |
+| Seguridad | A · 0 issues abiertos |
+| Fiabilidad | A · 0 issues abiertos |
+| Mantenibilidad | A · 0 issues abiertos |
+| Issues aceptados | 0 |
+| Cobertura | 96.6% (421 líneas por cubrir) |
+| Duplicaciones | 0.0% (2.3k líneas) |
+| Security hotspots | 0 |
 
-Estos valores provienen de la captura más reciente compartida y pueden cambiar después del siguiente análisis.
+Los resultados pueden cambiar en análisis posteriores.
 
 ## Componentes del proyecto
 
@@ -36,7 +39,7 @@ Estos valores provienen de la captura más reciente compartida y pueden cambiar 
 
 ## Pipeline de integración continua
 
-El workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) se ejecuta en pushes a `main` o `master` y en Pull Requests. Compila la API, ejecuta sus pruebas con cobertura, valida los tipos y el estilo del frontend, compila la interfaz y corre sus pruebas unitarias. También envía el análisis a SonarCloud mediante el secreto `SONAR_TOKEN` del repositorio.
+El workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) se ejecuta en pushes a `main`, `master` y `fix/sonar-duplication-cleanup`, y en Pull Requests. Compila la API, ejecuta sus pruebas con cobertura, valida los tipos y el estilo del frontend, compila la interfaz y corre sus pruebas unitarias. También envía el análisis a SonarCloud mediante el secreto `SONAR_TOKEN` del repositorio.
 
 Las pruebas Playwright de `automation/` no se ejecutan en CI porque requieren una API y una base de datos de integración. Sus instrucciones están en [`automation/README.md`](automation/README.md).
 
