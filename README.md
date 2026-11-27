@@ -1,3 +1,58 @@
+# Documentación del proyecto final
+
+[![CI](https://github.com/Juanma-cardona/Proyecto_final/actions/workflows/ci.yml/badge.svg)](https://github.com/Juanma-cardona/Proyecto_final/actions/workflows/ci.yml)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=Juanma-cardona_Proyecto_final&metric=alert_status)](https://sonarcloud.io/summary/overall?id=Juanma-cardona_Proyecto_final)
+
+## Enlaces
+
+| Recurso | Enlace / estado |
+|---|---|
+| Repositorio GitHub | [Juanma-cardona/Proyecto_final](https://github.com/Juanma-cardona/Proyecto_final) |
+| Aplicación web | [Abrir BodegasApp](https://proyecto-final-two-beige.vercel.app/) |
+| Análisis SonarCloud | [Resumen del proyecto](https://sonarcloud.io/summary/overall?id=Juanma-cardona_Proyecto_final) |
+| Pipeline CI | [GitHub Actions](https://github.com/Juanma-cardona/Proyecto_final/actions/workflows/ci.yml) |
+
+## Estado actual de SonarCloud
+
+La captura más reciente muestra **2 condiciones fallidas en New Code**. La imagen resume esas métricas; el [panel de SonarCloud](https://sonarcloud.io/summary/overall?id=Juanma-cardona_Proyecto_final) refleja el análisis publicado más reciente.
+
+| Métrica | Resultado de la captura |
+|---|---:|
+| Condición | Resultado | Requisito |
+|---|---:|---:|
+| Cobertura de código nuevo | 55.77% (368 líneas) | ≥ 80.0% |
+| Líneas duplicadas nuevas | 8.96% (3k líneas) | ≤ 3.0% |
+| Issues nuevos / aceptados | 0 / 0 | — |
+| Security hotspots | 0 | — |
+
+Estos valores provienen de la captura más reciente compartida y pueden cambiar después del siguiente análisis.
+
+## Componentes del proyecto
+
+- **API** (`src/`): servicio REST con Express y TypeScript para productos, existencias, ajustes y transferencias entre las bodegas BOG, MED y CAL.
+- **Interfaz web** (`frontend/`): aplicación React y Vite para consultar existencias y gestionar productos y movimientos.
+- **Pruebas de API** (`automation/`): pruebas de integración con Playwright. Requieren una API accesible y una base de datos configurada.
+- **Base de datos** (`database/`): scripts y configuración de persistencia.
+
+## Pipeline de integración continua
+
+El workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) se ejecuta en pushes a `main` o `master` y en Pull Requests. Compila la API, ejecuta sus pruebas con cobertura, valida los tipos y el estilo del frontend, compila la interfaz y corre sus pruebas unitarias. También envía el análisis a SonarCloud mediante el secreto `SONAR_TOKEN` del repositorio.
+
+Las pruebas Playwright de `automation/` no se ejecutan en CI porque requieren una API y una base de datos de integración. Sus instrucciones están en [`automation/README.md`](automation/README.md).
+
+## Ejecución local
+
+Instala las dependencias de la API y del frontend:
+
+```bash
+npm ci
+cd frontend
+npm ci
+npm run dev
+```
+
+En otra terminal, desde la raíz del repositorio, ejecuta `npm run dev` para iniciar la API. La interfaz queda en `http://localhost:5173` y la API en `http://localhost:3000`. Revisa [`.env.example`](.env.example) y [`frontend/.env.example`](frontend/.env.example) para los valores locales; no publiques credenciales.
+
 # API de Gestión de Bodegas (3 bodegas)
 
 API REST para controlar el inventario de una distribuidora con **tres bodegas físicas** (propuesta 2 del curso de Pruebas de Software). Permite crear productos, consultar el stock por bodega, hacer ajustes manuales con justificación y transferir mercancía entre bodegas, garantizando que **el stock nunca quede negativo** y dejando registro de cada movimiento.
