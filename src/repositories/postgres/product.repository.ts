@@ -3,25 +3,9 @@ import { AppError } from "../../exceptions/errors/app.error";
 import { fail } from "../../exceptions/fail";
 import { ISqlExecutor } from "../interfaces/database.interface";
 import { IProductRepository } from "../interfaces/repositories.interface";
-
-interface ProductRow {
-    id: string;
-    code: string;
-    name: string;
-    description: string | null;
-    active: boolean;
-    created_at: Date;
-}
+import { findProductsByIds, ProductRow, toProduct } from "../shared/product.mapping";
 
 const SELECT_PRODUCT = "SELECT id, code, name, description, active, created_at FROM products";
-const toProduct = (row: ProductRow): Product => ({
-    id: row.id,
-    code: row.code,
-    name: row.name,
-    description: row.description,
-    active: row.active,
-    createdAt: row.created_at,
-});
 
 export class PostgresProductRepository implements IProductRepository {
     constructor(private readonly sqlExecutor: ISqlExecutor) {}
@@ -67,19 +51,7 @@ export class PostgresProductRepository implements IProductRepository {
     }
 
     async findByIds(ids: string[]): Promise<Product[]> {
-        const uniqueIds = [...new Set(ids)];
-        if (uniqueIds.length === 0) return [];
-
-        const params: Record<string, string> = {};
-        const placeholders = uniqueIds.map((id, index) => {
-            params[`id${index}`] = id;
-            return `@id${index}`;
-        });
-        const rows = await this.sqlExecutor.query<ProductRow>(
-            `${SELECT_PRODUCT} WHERE id IN (${placeholders.join(", ")})`,
-            params
-        );
-        return rows.map(toProduct);
+        return findProductsByIds(this.sqlExecutor, "products", ids);
     }
 
     async findByCode(code: string): Promise<Product | null> {
